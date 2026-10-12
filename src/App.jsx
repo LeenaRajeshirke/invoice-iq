@@ -1,33 +1,47 @@
 import { useState } from 'react'
 import { NavLink, Navigate, Route, Routes, Link } from 'react-router-dom'
-import { LayoutDashboard, FileText, Upload, Settings, Menu, X } from 'lucide-react'
+import { Activity, FileText, LayoutDashboard, Menu, Settings2, UploadCloud, X } from 'lucide-react'
 import { config } from './config'
 import Dashboard from './pages/Dashboard'
 import Invoices from './pages/Invoices'
 import UploadPage from './pages/UploadPage'
 import Review from './pages/Review'
 import SettingsPage from './pages/SettingsPage'
-const nav=[['/dashboard','Dashboard',LayoutDashboard],['/invoices','Invoices',FileText],['/upload','Upload',Upload],['/settings','Settings',Settings]]
+const nav=[['/dashboard','Dashboard',LayoutDashboard],['/invoices','Invoices',FileText],['/upload','Upload invoice',UploadCloud],['/settings','Settings',Settings2]]
 export default function App(){
   const [open,setOpen]=useState(false)
-  return <div className="min-h-screen md:flex">
-    <aside className={`${open?'block':'hidden'} md:block fixed md:sticky top-0 z-40 h-screen w-60 shrink-0 bg-slate-900 text-slate-200 p-4`}>
-      <Link to="/dashboard" className="text-lg font-bold text-white block mb-6">Invoice<span className="text-indigo-400">IQ</span></Link>
-      <nav aria-label="Main" className="space-y-1">{nav.map(([to,l,I])=><NavLink key={to} to={to} onClick={()=>setOpen(false)} className={({isActive})=>`flex items-center gap-2 px-3 py-2 rounded-md text-sm ${isActive?'bg-indigo-600 text-white':'hover:bg-slate-800'}`}><I size={16}/>{l}</NavLink>)}</nav>
+  return <div className="app-shell min-h-screen md:flex">
+    {open&&<button className="nav-scrim md:hidden" aria-label="Close navigation" onClick={()=>setOpen(false)}/>}
+    <aside className={`${open?'flex':'hidden'} app-sidebar md:flex fixed md:sticky top-0 z-50 md:z-30 h-screen w-[17rem] shrink-0 flex-col px-4 py-5`}>
+      <div className="flex items-center justify-between px-2 mb-9">
+        <Link to="/dashboard" onClick={()=>setOpen(false)} className="brand-lockup">
+          <span className="brand-mark">IQ</span>
+          <span className="brand-name">Invoice<span>IQ</span><small className="brand-caption">DOCUMENT INTELLIGENCE</small></span>
+        </Link>
+        <button className="icon-button md:hidden" aria-label="Close navigation" onClick={()=>setOpen(false)}><X size={18}/></button>
+      </div>
+      <p className="sidebar-label px-3 mb-2">Workspace</p>
+      <nav aria-label="Main" className="space-y-1">{nav.map(([to,label,Icon])=><NavLink key={to} to={to} onClick={()=>setOpen(false)} className={({isActive})=>`side-link ${isActive?'side-link-active':''}`}><Icon size={17} strokeWidth={1.8}/>{label}</NavLink>)}</nav>
+      <div className="sidebar-bottom mt-auto">
+        <div className="sidebar-health"><span className={`health-dot ${config.mode==='live'?'health-dot-live':'health-dot-demo'}`}/><span><b>{config.mode==='live'?'Live API mode':'Demo workspace'}</b><small className="sidebar-detail">{config.mode==='live'?config.baseUrl:'Sample data only'}</small></span></div>
+        <div className="sidebar-foot"><Activity size={14}/> InvoiceIQ <span className="ml-auto">v0.1.0</span></div>
+      </div>
     </aside>
-    <div className="flex-1 min-w-0">
-      <header className="bg-white border-b px-4 h-14 flex items-center gap-3 sticky top-0 z-30">
-        <button className="md:hidden btn" aria-label="Toggle navigation" onClick={()=>setOpen(!open)}>{open?<X size={16}/>:<Menu size={16}/>}</button>
-        <span className="text-sm text-slate-500 hidden sm:inline">Layout-Aware Invoice Extraction with Human-in-the-Loop Validation</span>
-        <span className={`ml-auto text-xs px-2 py-1 rounded-full ${config.mode==='mock'?'bg-amber-100 text-amber-800':'bg-green-100 text-green-800'}`}>{config.mode==='mock'?'DEMO MODE · sample data':'LIVE · '+config.baseUrl}</span>
+    <div className="app-main-column flex-1 min-w-0">
+      <header className="topbar h-16 flex items-center gap-3 sticky top-0 z-30 px-4 sm:px-7">
+        <button className="icon-button md:hidden" aria-label="Toggle navigation" aria-expanded={open} onClick={()=>setOpen(!open)}>{open?<X size={18}/>:<Menu size={18}/>}</button>
+        <div className="min-w-0"><p className="topbar-kicker">INVOICEIQ <span>/</span> WORKSPACE</p><p className="topbar-title">Document operations</p></div>
+        <span className={`mode-pill ml-auto ${config.mode==='mock'?'mode-pill-demo':'mode-pill-live'}`}><span className="health-dot"/>{config.mode==='mock'?'Demo mode':'Live API mode'}</span>
       </header>
-      <main className="p-4 md:p-6 max-w-7xl mx-auto">
+      <main className="app-main px-4 py-6 sm:px-7 sm:py-8">
+        <div className="page-width mx-auto">
         <Routes>
           <Route path="/" element={<Navigate to="/dashboard" replace/>}/>
           <Route path="/dashboard" element={<Dashboard/>}/><Route path="/invoices" element={<Invoices/>}/>
           <Route path="/upload" element={<UploadPage/>}/><Route path="/invoices/:id/review" element={<Review/>}/>
           <Route path="/settings" element={<SettingsPage/>}/><Route path="*" element={<Navigate to="/dashboard" replace/>}/>
         </Routes>
+        </div>
       </main>
     </div>
   </div>

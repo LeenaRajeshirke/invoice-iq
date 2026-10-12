@@ -18,8 +18,8 @@ export function download(name,text,type){const u=URL.createObjectURL(new Blob([t
 const esc=v=>{const s=v==null?'':String(v);return /[",\n\r]/.test(s)?`"${s.replace(/"/g,'""')}"`:s}
 // CSV: ONE ROW PER LINE ITEM, invoice columns repeated (no line data is dropped).
 export function toCsv(i){
-  const h=['invoice_number','vendor','invoice_date','currency','subtotal','tax','total','review_status','line_description','quantity','unit_price','tax_rate','line_total']
-  const rows=(i.lineItems.length?i.lineItems:[{}]).map(l=>[i.invoiceNumber,i.vendor.name,i.invoiceDate,i.currency,i.subtotal,i.taxAmount,i.totalAmount,i.reviewStatus,l.description,l.quantity,l.unitPrice,l.taxRate,l.total])
+  const h=['invoice_number','vendor','invoice_date','currency','subtotal','tax_amount','discount_amount','total_amount','review_status','line_description','quantity','unit_price','line_tax_amount','line_tax_rate','line_total']
+  const rows=(i.lineItems.length?i.lineItems:[{}]).map(l=>[i.invoiceNumber,i.vendor.name,i.invoiceDate,i.currency,i.subtotal,i.taxAmount,i.discount,i.totalAmount,i.reviewStatus,l.description,l.quantity,l.unitPrice,l.taxAmount,l.taxRate,l.total])
   return '\uFEFF'+[h,...rows].map(r=>r.map(esc).join(',')).join('\r\n')
 }
-export const toJson=i=>JSON.stringify({invoiceNumber:i.invoiceNumber,vendor:i.vendor,customer:i.customer,invoiceDate:i.invoiceDate,dueDate:i.dueDate,currency:i.currency,subtotal:i.subtotal,taxAmount:i.taxAmount,totalAmount:i.totalAmount,lineItems:i.lineItems,reviewStatus:i.reviewStatus,validationWarnings:i.validationWarnings},null,2)
+export const toJson=i=>JSON.stringify({invoiceNumber:i.invoiceNumber,vendor:i.vendor,customer:i.customer,invoiceDate:i.invoiceDate,dueDate:i.dueDate,currency:i.currency,subtotal:i.subtotal,taxAmount:i.taxAmount,discountAmount:i.discount,totalAmount:i.totalAmount,lineItems:i.lineItems,reviewStatus:i.reviewStatus,validationWarnings:i.validationWarnings},null,2)
