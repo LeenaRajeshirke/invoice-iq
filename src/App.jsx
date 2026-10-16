@@ -1,48 +1,55 @@
 import { useState } from 'react'
-import { NavLink, Navigate, Route, Routes, Link } from 'react-router-dom'
-import { Activity, FileText, LayoutDashboard, Menu, Settings2, UploadCloud, X } from 'lucide-react'
+import { NavLink, Navigate, Route, Routes, Link, useLocation } from 'react-router-dom'
+import { LayoutDashboard, FileText, Upload, Settings, Menu, X, Search, Bell, Sparkles, ChevronRight, Command } from 'lucide-react'
 import { config } from './config'
 import Dashboard from './pages/Dashboard'
 import Invoices from './pages/Invoices'
 import UploadPage from './pages/UploadPage'
 import Review from './pages/Review'
 import SettingsPage from './pages/SettingsPage'
-const nav=[['/dashboard','Dashboard',LayoutDashboard],['/invoices','Invoices',FileText],['/upload','Upload invoice',UploadCloud],['/settings','Settings',Settings2]]
-export default function App(){
-  const [open,setOpen]=useState(false)
-  return <div className="app-shell min-h-screen md:flex">
-    {open&&<button className="nav-scrim md:hidden" aria-label="Close navigation" onClick={()=>setOpen(false)}/>}
-    <aside className={`${open?'flex':'hidden'} app-sidebar md:flex fixed md:sticky top-0 z-50 md:z-30 h-screen w-[17rem] shrink-0 flex-col px-4 py-5`}>
-      <div className="flex items-center justify-between px-2 mb-9">
-        <Link to="/dashboard" onClick={()=>setOpen(false)} className="brand-lockup">
-          <span className="brand-mark">IQ</span>
-          <span className="brand-name">Invoice<span>IQ</span><small className="brand-caption">DOCUMENT INTELLIGENCE</small></span>
-        </Link>
-        <button className="icon-button md:hidden" aria-label="Close navigation" onClick={()=>setOpen(false)}><X size={18}/></button>
-      </div>
-      <p className="sidebar-label px-3 mb-2">Workspace</p>
-      <nav aria-label="Main" className="space-y-1">{nav.map(([to,label,Icon])=><NavLink key={to} to={to} onClick={()=>setOpen(false)} className={({isActive})=>`side-link ${isActive?'side-link-active':''}`}><Icon size={17} strokeWidth={1.8}/>{label}</NavLink>)}</nav>
-      <div className="sidebar-bottom mt-auto">
-        <div className="sidebar-health"><span className={`health-dot ${config.mode==='live'?'health-dot-live':'health-dot-demo'}`}/><span><b>{config.mode==='live'?'Live API mode':'Demo workspace'}</b><small className="sidebar-detail">{config.mode==='live'?config.baseUrl:'Sample data only'}</small></span></div>
-        <div className="sidebar-foot"><Activity size={14}/> InvoiceIQ <span className="ml-auto">v0.1.0</span></div>
+
+const nav = [
+  { to: '/dashboard', label: 'Overview', icon: LayoutDashboard },
+  { to: '/invoices', label: 'Invoices', icon: FileText },
+  { to: '/upload', label: 'Upload documents', icon: Upload },
+]
+const secondary = [{ to: '/settings', label: 'Settings', icon: Settings }]
+const pageNames = { '/dashboard': 'Overview', '/invoices': 'Invoices', '/upload': 'Upload documents', '/settings': 'Settings' }
+
+export default function App() {
+  const [open, setOpen] = useState(false)
+  const location = useLocation()
+  const title = location.pathname.includes('/review') ? 'Invoice review' : pageNames[location.pathname] || 'InvoiceIQ'
+  return <div className="app-shell">
+    {open && <button className="mobile-scrim" aria-label="Close navigation" onClick={() => setOpen(false)} />}
+    <aside className={`sidebar ${open ? 'sidebar-open' : ''}`}>
+      <Link to="/dashboard" className="brand" onClick={() => setOpen(false)}>
+        <span className="brand-mark"><FileText size={21} strokeWidth={2.3} /></span>
+        <span className="brand-name">invoice<span>iq</span><small>INTELLIGENT FINANCE</small></span>
+      </Link>
+      <div className="workspace-switcher"><span className="workspace-avatar">F</span><span className="workspace-copy"><b>Finance workspace</b><small>Free workspace</small></span><ChevronRight size={15} className="workspace-chevron" /></div>
+      <p className="nav-caption">WORKSPACE</p>
+      <nav className="side-nav" aria-label="Main navigation">{nav.map(({ to, label, icon: Icon }) => <NavLink key={to} to={to} onClick={() => setOpen(false)} className={({ isActive }) => `nav-link ${isActive ? 'active' : ''}`}><Icon size={18} strokeWidth={1.9} /><span>{label}</span>{to === '/invoices' && <span className="nav-arrow">↗</span>}</NavLink>)}</nav>
+      <div className="sidebar-promo"><span className="promo-icon"><Sparkles size={17} /></span><b>Invoice intelligence</b><p>Turn documents into organized, review-ready data.</p><Link to="/upload" onClick={() => setOpen(false)}>Try an upload <ChevronRight size={14} /></Link></div>
+      <div className="sidebar-bottom"><p className="nav-caption">PREFERENCES</p>{secondary.map(({ to, label, icon: Icon }) => <NavLink key={to} to={to} onClick={() => setOpen(false)} className={({ isActive }) => `nav-link ${isActive ? 'active' : ''}`}><Icon size={18} /><span>{label}</span></NavLink>)}
+        <div className="profile-row"><span className="profile-avatar">L</span><span className="profile-copy"><b>Finance team</b><small>Workspace member</small></span><span className="online-dot" /></div>
       </div>
     </aside>
-    <div className="app-main-column flex-1 min-w-0">
-      <header className="topbar h-16 flex items-center gap-3 sticky top-0 z-30 px-4 sm:px-7">
-        <button className="icon-button md:hidden" aria-label="Toggle navigation" aria-expanded={open} onClick={()=>setOpen(!open)}>{open?<X size={18}/>:<Menu size={18}/>}</button>
-        <div className="min-w-0"><p className="topbar-kicker">INVOICEIQ <span>/</span> WORKSPACE</p><p className="topbar-title">Document operations</p></div>
-        <span className={`mode-pill ml-auto ${config.mode==='mock'?'mode-pill-demo':'mode-pill-live'}`}><span className="health-dot"/>{config.mode==='mock'?'Demo mode':'Live API mode'}</span>
+    <div className="main-area">
+      <header className="topbar">
+        <button className="icon-button mobile-menu" aria-label="Toggle navigation" onClick={() => setOpen(!open)}>{open ? <X size={19} /> : <Menu size={19} />}</button>
+        <div className="breadcrumbs"><span>Workspace</span><ChevronRight size={14} /><b>{title}</b></div>
+        <div className="topbar-actions"><div className="search-hint"><Search size={15} /><span>Quick search</span><kbd><Command size={11} /> K</kbd></div><span className={`mode-pill ${config.mode === 'mock' ? 'demo' : 'live'}`}><i />{config.mode === 'mock' ? 'Demo environment' : 'Live connection'}</span><button className="icon-button notification-button" aria-label="Notifications"><Bell size={18} /><i /></button></div>
       </header>
-      <main className="app-main px-4 py-6 sm:px-7 sm:py-8">
-        <div className="page-width mx-auto">
-        <Routes>
-          <Route path="/" element={<Navigate to="/dashboard" replace/>}/>
-          <Route path="/dashboard" element={<Dashboard/>}/><Route path="/invoices" element={<Invoices/>}/>
-          <Route path="/upload" element={<UploadPage/>}/><Route path="/invoices/:id/review" element={<Review/>}/>
-          <Route path="/settings" element={<SettingsPage/>}/><Route path="*" element={<Navigate to="/dashboard" replace/>}/>
-        </Routes>
-        </div>
-      </main>
+      <main className="page-content"><Routes>
+        <Route path="/" element={<Navigate to="/dashboard" replace />} />
+        <Route path="/dashboard" element={<Dashboard />} />
+        <Route path="/invoices" element={<Invoices />} />
+        <Route path="/upload" element={<UploadPage />} />
+        <Route path="/invoices/:id/review" element={<Review />} />
+        <Route path="/settings" element={<SettingsPage />} />
+        <Route path="*" element={<Navigate to="/dashboard" replace />} />
+      </Routes><footer className="app-footer"><span>© 2026 InvoiceIQ</span><span>Built for accuracy, designed for people.</span></footer></main>
     </div>
   </div>
 }
