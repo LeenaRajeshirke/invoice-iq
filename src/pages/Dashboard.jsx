@@ -1,57 +1,486 @@
+
+import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { BarChart, Bar, CartesianGrid, Cell, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recharts'
-import { AlertTriangle, ArrowRight, ArrowUpRight, CheckCheck, Clock3, FileText, Upload, XCircle } from 'lucide-react'
-import { useInvoices } from '../hooks'
-import { Spinner, ErrorState, EmptyState, PageHeader, StatusBadge } from '../components/common'
+import {
+  Settings2,
+  Server,
+  ShieldCheck,
+  Gauge,
+  ExternalLink,
+  Info,
+  CheckCircle2,
+  FileText,
+  Sun,
+  Moon,
+  UserRound,
+  Bell,
+  RotateCcw,
+  Save,
+  SlidersHorizontal,
+} from 'lucide-react'
+
 import { config } from '../config'
-import { fmtDate, money } from '../utils'
-export default function Dashboard(){
-  const {invoices:inv,error,reload}=useInvoices()
-  if(error)return <ErrorState message={error} onRetry={reload}/>
-  if(!inv)return <Spinner/>
-  const n=f=>inv.filter(f).length
-  const queue=inv.filter(i=>['pending','needs_review'].includes(i.reviewStatus)||i.processingStatus==='failed')
-  const stats=[
-    {label:'Pending review',value:n(i=>i.reviewStatus==='pending'),note:'No review decision recorded',Icon:Clock3},
-    {label:'Needs review',value:n(i=>i.reviewStatus==='needs_review'),note:'Flagged for manual review',Icon:AlertTriangle},
-    {label:'Reviewed',value:n(i=>i.reviewStatus==='reviewed'),note:'Marked reviewed',Icon:CheckCheck},
-    {label:'Rejected',value:n(i=>i.reviewStatus==='rejected'),note:'Marked rejected',Icon:XCircle},
-  ]
-  const chart=[
-    ['uploaded','Uploaded','#8791a4'],['processing','Processing','#7664dc'],
-    ['completed','Processed','#258368'],['failed','Failed','#c3555b'],
-  ].map(([key,name,color])=>({name,count:n(i=>i.processingStatus===key),color}))
-  const latest=[...inv].sort((a,b)=>String(b.updatedAt).localeCompare(String(a.updatedAt))).slice(0,6)
-  return <>
-    <PageHeader eyebrow="OPERATIONS" title="Dashboard" subtitle="Invoice intake, processing status, and work requiring review."><Link to="/upload" className="btn btn-p"><Upload size={15}/>Upload invoice</Link></PageHeader>
-    {config.mode==='mock'&&<div className="mb-4 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900">Demo workspace · sample records only</div>}
-    <section aria-label="Review status metrics" className="metrics-strip mb-5">{stats.map(({label,value,note,Icon},index)=><article key={label} className={`metric-cell metric-cell-${index}`}><div className="metric-head"><span>{label}</span><Icon size={16}/></div><p className="metric-value">{value}</p><p className="metric-note">{note}</p></article>)}</section>
-    {inv.length===0?<section className="panel"><EmptyState title="No invoices yet" text="Upload an invoice to start building your workspace."><Link to="/upload" className="btn btn-p"><Upload size={15}/>Upload invoice</Link></EmptyState></section>:<>
-      <section className="dashboard-panels mb-4">
-        <div className="panel dashboard-queue">
-          <div className="panel-heading"><div><h2 className="panel-title">Review queue</h2><p className="panel-note">Open review decisions and failed processing</p></div><span className="queue-count">{queue.length} open</span></div>
-          {queue.length?<ul className="queue-list">{queue.slice(0,5).map(invoice=><li className="queue-item" key={invoice.id}><div className="queue-identity"><Link className="queue-number" title={invoice.invoiceNumber||`Invoice #${invoice.id}`} to={`/invoices/${invoice.id}/review`}>{invoice.invoiceNumber||`Invoice #${invoice.id}`}</Link><p title={invoice.vendor.name||'Vendor not identified'}>{invoice.vendor.name||'Vendor not identified'}</p><span className="queue-meta">{fmtDate(invoice.invoiceDate)}{invoice.totalAmount!=null?` · ${money(invoice.totalAmount,invoice.currency)}`:''}</span></div><div className="queue-end"><StatusBadge kind={invoice.processingStatus==='failed'?undefined:'review'} value={invoice.processingStatus==='failed'?'failed':invoice.reviewStatus}/><Link className="queue-open" aria-label={`Review invoice ${invoice.invoiceNumber||invoice.id}`} to={`/invoices/${invoice.id}/review`}><ArrowUpRight size={15}/></Link></div></li>)}</ul>:<div className="queue-empty"><span className="empty-icon"><CheckCheck size={19}/></span><p>No invoices need attention.</p></div>}
-          {queue.length>5&&<Link to="/invoices" className="queue-all">View all {queue.length} open items <ArrowRight size={13}/></Link>}
+
+const readJSON = (key, fallback) => {
+  try {
+    const value = localStorage.getItem(key)
+    return value ? { ...fallback, ...JSON.parse(value) } : fallback
+  } catch {
+    return fallback
+  }
+}
+
+function SettingRow({ label, value, status }) {
+  return (
+    <div className="settings-row">
+      <span>{label}</span>
+      <b>
+        {status && (
+          <i
+            className={`inline-block w-2 h-2 rounded-full mr-2 ${
+              status === 'live' ? 'bg-emerald-500' : 'bg-amber-500'
+            }`}
+          />
+        )}
+        {value || 'Not configured'}
+      </b>
+    </div>
+  )
+}
+
+function PreferenceToggle({
+  icon: Icon,
+  title,
+  description,
+  checked,
+  onChange,
+}) {
+  return (
+    <label className="preference-row">
+      <span className="preference-icon">
+        <Icon size={19} />
+      </span>
+
+      <span className="preference-copy">
+        <strong>{title}</strong>
+        <small>{description}</small>
+      </span>
+
+      <input
+        type="checkbox"
+        className="preference-checkbox"
+        checked={Boolean(checked)}
+        onChange={(event) => onChange(event.target.checked)}
+      />
+    </label>
+  )
+}
+
+export default function SettingsPage() {
+  const [theme, setTheme] = useState(
+    () => localStorage.getItem('invoiceiq-theme') || 'light',
+  )
+
+  const [profile, setProfile] = useState(() =>
+    readJSON('invoiceiq-profile', { name: '', email: '' }),
+  )
+
+  const [preferences, setPreferences] = useState(() =>
+    readJSON('invoiceiq-preferences', {
+      notifications: true,
+      reviewAlerts: true,
+      compactTables: false,
+    }),
+  )
+
+  const [saved, setSaved] = useState(false)
+
+  useEffect(() => {
+    document.documentElement.dataset.theme = theme
+    localStorage.setItem('invoiceiq-theme', theme)
+
+    window.dispatchEvent(
+      new CustomEvent('invoiceiq-theme-change', { detail: theme }),
+    )
+  }, [theme])
+
+  const saveSettings = () => {
+    localStorage.setItem('invoiceiq-profile', JSON.stringify(profile))
+    localStorage.setItem(
+      'invoiceiq-preferences',
+      JSON.stringify(preferences),
+    )
+
+    window.dispatchEvent(
+      new CustomEvent('invoiceiq-profile-change', { detail: profile }),
+    )
+
+    window.dispatchEvent(
+      new CustomEvent('invoiceiq-preferences-change', {
+        detail: preferences,
+      }),
+    )
+
+    setSaved(true)
+    window.setTimeout(() => setSaved(false), 2500)
+  }
+
+  const resetPreferences = () => {
+    const defaults = {
+      notifications: true,
+      reviewAlerts: true,
+      compactTables: false,
+    }
+
+    setPreferences(defaults)
+    setProfile({ name: '', email: '' })
+
+    localStorage.setItem(
+      'invoiceiq-preferences',
+      JSON.stringify(defaults),
+    )
+    localStorage.removeItem('invoiceiq-profile')
+    setSaved(false)
+  }
+
+  const isMock = config.mode === 'mock'
+
+  return (
+    <main className="page-content">
+      <div className="page-header">
+        <div>
+          <p className="eyebrow">PREFERENCES &amp; CONFIGURATION</p>
+          <h1>Settings</h1>
+          <p className="page-description">
+            Personalize your workspace and review your application
+            configuration.
+          </p>
         </div>
-        <div className="panel dashboard-chart">
-          <div className="panel-heading"><div><h2 className="panel-title">Processing status</h2><p className="panel-note">Invoice count by current backend status</p></div><span className="panel-note">{inv.length} total</span></div>
-          <div className="status-chart" role="img" aria-label="Invoice counts by processing status"><ResponsiveContainer width="100%" height="100%"><BarChart data={chart} margin={{top:8,right:8,bottom:2,left:-18}} barCategoryGap="38%"><CartesianGrid vertical={false} stroke="#edf0f4"/><XAxis dataKey="name" axisLine={false} tickLine={false} tick={{fontSize:11,fill:'#727a8d'}}/><YAxis allowDecimals={false} axisLine={false} tickLine={false} tick={{fontSize:11,fill:'#727a8d'}}/><Tooltip cursor={{fill:'#f7f7fb'}} formatter={value=>[value,'Invoices']} contentStyle={{border:'1px solid #e5e8ef',borderRadius:7,fontSize:12,boxShadow:'0 4px 12px #1b223012'}}/><Bar dataKey="count" name="Invoices" radius={[4,4,0,0]} maxBarSize={44}>{chart.map(item=><Cell key={item.name} fill={item.color}/>)}</Bar></BarChart></ResponsiveContainer></div>
-          <ul className="status-legend" aria-label="Processing status legend">{chart.map(item=><li key={item.name}><span className="legend-swatch" style={{backgroundColor:item.color}}/><span>{item.name}</span><b>{item.count}</b></li>)}</ul>
+
+        <button
+          type="button"
+          className="button-primary"
+          onClick={saveSettings}
+        >
+          <Save size={16} />
+          {saved ? 'Settings saved' : 'Save changes'}
+        </button>
+      </div>
+
+      {saved && (
+        <div className="inline-success" role="status">
+          <CheckCircle2 size={17} />
+          Your preferences have been saved on this device.
         </div>
-      </section>
-      <section className="panel">
-        <div className="panel-heading"><div><h2 className="panel-title">Recent invoices</h2><p className="panel-note">Most recently updated records</p></div><Link className="btn btn-quiet" to="/invoices">All invoices <ArrowRight size={14}/></Link></div>
-        <div className="recent-list">
-          <div className="recent-row recent-row-head"><span>Invoice / vendor</span><span>Date</span><span>Amount</span><span>Statuses</span><span/></div>
-          {latest.map(invoice=><article className="recent-row" key={invoice.id}>
-            <div className="recent-identity"><Link to={`/invoices/${invoice.id}/review`} className="recent-number">{invoice.invoiceNumber||`Invoice #${invoice.id}`}</Link><span className="recent-vendor">{invoice.vendor.name||'Vendor not identified'}</span></div>
-            <span className="recent-date"><span className="recent-mobile-label">Date</span>{fmtDate(invoice.invoiceDate)}</span>
-            <span className="recent-amount"><span className="recent-mobile-label">Amount</span>{money(invoice.totalAmount,invoice.currency)}</span>
-            <div className="recent-status"><StatusBadge value={invoice.processingStatus}/><StatusBadge kind="review" value={invoice.reviewStatus}/></div>
-            <Link to={`/invoices/${invoice.id}/review`} className="recent-action">Open <ArrowUpRight size={14}/></Link>
-          </article>)}
+      )}
+
+      <div className="settings-grid">
+        <div className="settings-main-column">
+          <section className="panel settings-card">
+            <div className="panel-header">
+              <div>
+                <h2><UserRound size={18} /> Profile</h2>
+                <p className="muted-text">
+                  Personalize how you appear in the workspace.
+                </p>
+              </div>
+            </div>
+
+            <div className="settings-form-grid">
+              <label className="review-field">
+                <span className="field-label">Display name</span>
+                <input
+                  className="inp"
+                  value={profile.name || ''}
+                  placeholder="Your name"
+                  onChange={(event) =>
+                    setProfile((current) => ({
+                      ...current,
+                      name: event.target.value,
+                    }))
+                  }
+                />
+              </label>
+
+              <label className="review-field">
+                <span className="field-label">Email address</span>
+                <input
+                  className="inp"
+                  type="email"
+                  value={profile.email || ''}
+                  placeholder="you@company.com"
+                  onChange={(event) =>
+                    setProfile((current) => ({
+                      ...current,
+                      email: event.target.value,
+                    }))
+                  }
+                />
+              </label>
+            </div>
+
+            <p className="settings-help">
+              These details are stored locally in your browser. They do not
+              change your authentication account.
+            </p>
+          </section>
+
+          <section className="panel settings-card">
+            <div className="panel-header">
+              <div>
+                <h2><SlidersHorizontal size={18} /> Appearance</h2>
+                <p className="muted-text">
+                  Choose the theme you prefer for InvoiceIQ.
+                </p>
+              </div>
+            </div>
+
+            <div className="theme-options">
+              <button
+                type="button"
+                className={`theme-option ${
+                  theme === 'light' ? 'theme-option-active' : ''
+                }`}
+                onClick={() => setTheme('light')}
+              >
+                <span className="theme-preview theme-preview-light">
+                  <Sun size={23} />
+                </span>
+                <span>
+                  <strong>Light mode</strong>
+                  <small>Bright and clean</small>
+                </span>
+                {theme === 'light' && <CheckCircle2 size={18} />}
+              </button>
+
+              <button
+                type="button"
+                className={`theme-option ${
+                  theme === 'dark' ? 'theme-option-active' : ''
+                }`}
+                onClick={() => setTheme('dark')}
+              >
+                <span className="theme-preview theme-preview-dark">
+                  <Moon size={23} />
+                </span>
+                <span>
+                  <strong>Dark mode</strong>
+                  <small>Comfortable in low light</small>
+                </span>
+                {theme === 'dark' && <CheckCircle2 size={18} />}
+              </button>
+            </div>
+          </section>
+
+          <section className="panel settings-card">
+            <div className="panel-header">
+              <div>
+                <h2><Bell size={18} /> Workspace preferences</h2>
+                <p className="muted-text">
+                  Manage notification preferences and table density.
+                </p>
+              </div>
+            </div>
+
+            <div className="preferences-list">
+              <PreferenceToggle
+                icon={Bell}
+                title="Notifications"
+                description="Enable workspace notification preferences."
+                checked={preferences.notifications}
+                onChange={(value) =>
+                  setPreferences((current) => ({
+                    ...current,
+                    notifications: value,
+                  }))
+                }
+              />
+
+              <PreferenceToggle
+                icon={ShieldCheck}
+                title="Review alerts"
+                description="Highlight invoices requiring attention."
+                checked={preferences.reviewAlerts}
+                onChange={(value) =>
+                  setPreferences((current) => ({
+                    ...current,
+                    reviewAlerts: value,
+                  }))
+                }
+              />
+
+              <PreferenceToggle
+                icon={FileText}
+                title="Compact tables"
+                description="Prefer denser table rows where supported."
+                checked={preferences.compactTables}
+                onChange={(value) =>
+                  setPreferences((current) => ({
+                    ...current,
+                    compactTables: value,
+                  }))
+                }
+              />
+            </div>
+          </section>
+
+          <section className="panel settings-card">
+            <div className="panel-header">
+              <div>
+                <h2><Settings2 size={18} /> Application configuration</h2>
+                <p className="muted-text">
+                  Current values loaded by the frontend at startup.
+                </p>
+              </div>
+            </div>
+
+            <SettingRow
+              label="Application version"
+              value="0.1.0 · Frontend"
+            />
+
+            <SettingRow
+              label="API mode"
+              value={isMock ? 'Local data service' : 'Live FastAPI backend'}
+              status={config.mode}
+            />
+
+            <SettingRow
+              label="Backend base URL"
+              value={config.baseUrl}
+            />
+
+            <SettingRow
+              label="Maximum upload size"
+              value={`${config.maxMB} MB`}
+            />
+
+            <SettingRow
+              label="High confidence threshold"
+              value={`≥ ${config.high}%`}
+            />
+
+            <SettingRow
+              label="Moderate confidence threshold"
+              value={`≥ ${config.mid}%`}
+            />
+
+            <div className="inline-alert settings-notice">
+              <Info size={17} />
+              <span>
+                Confidence thresholds affect the UI labels only. They do not
+                guarantee extraction accuracy.
+              </span>
+            </div>
+          </section>
         </div>
-      </section>
-    </>}
-  </>
+
+        <aside className="settings-side-column">
+          <section className="settings-hero">
+            <span className="settings-hero-icon">
+              <ShieldCheck size={24} />
+            </span>
+            <h2>Your workflow. Your control.</h2>
+            <p>
+              Verify extracted invoice information before using it in
+              downstream finance processes.
+            </p>
+          </section>
+
+          <section className="panel settings-card">
+            <div className="panel-header">
+              <div>
+                <h2><Server size={18} /> Connection status</h2>
+                <p className="muted-text">
+                  Configured invoice data source.
+                </p>
+              </div>
+            </div>
+
+            <div className="connection-card">
+              <span
+                className={`connection-icon ${
+                  isMock ? 'connection-local' : 'connection-live'
+                }`}
+              >
+                <Gauge size={20} />
+              </span>
+
+              <div className="connection-copy">
+                <strong>
+                  {isMock ? 'Local data service' : 'Backend configured'}
+                </strong>
+                <small>
+                  {isMock
+                    ? 'Using the configured local data service.'
+                    : config.baseUrl}
+                </small>
+              </div>
+
+              <span
+                className={`status-badge ${
+                  isMock ? 'badge-warning' : 'badge-success'
+                }`}
+              >
+                {isMock ? 'LOCAL' : 'LIVE'}
+              </span>
+            </div>
+          </section>
+
+          <section className="panel settings-card">
+            <div className="panel-header">
+              <div>
+                <h2><ExternalLink size={18} /> Quick access</h2>
+                <p className="muted-text">
+                  Continue your invoice workflow.
+                </p>
+              </div>
+            </div>
+
+            <div className="settings-shortcuts">
+              <Link to="/invoices" className="button-secondary">
+                Invoice register <ExternalLink size={15} />
+              </Link>
+
+              <Link to="/upload" className="button-secondary">
+                Upload documents <ExternalLink size={15} />
+              </Link>
+            </div>
+          </section>
+
+          <section className="panel settings-card">
+            <div className="panel-header">
+              <div>
+                <h2><RotateCcw size={18} /> Reset preferences</h2>
+                <p className="muted-text">
+                  Restore default local preferences.
+                </p>
+              </div>
+            </div>
+
+            <button
+              type="button"
+              className="button-secondary reset-button"
+              onClick={resetPreferences}
+            >
+              <RotateCcw size={15} />
+              Reset local preferences
+            </button>
+
+            <p className="settings-help">
+              This resets the saved display name, email, and workspace
+              preferences. It does not delete invoice records or modify your
+              backend configuration.
+            </p>
+          </section>
+
+          <p className="settings-security-note">
+            <CheckCircle2 size={15} />
+            API secrets should never be stored in frontend environment
+            variables.
+          </p>
+        </aside>
+      </div>
+    </main>
+  )
 }
