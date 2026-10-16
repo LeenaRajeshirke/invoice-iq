@@ -1,95 +1,69 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useParams, Link } from 'react-router-dom'
 import toast from 'react-hot-toast'
-import { Plus, Trash2, Save, Download, ZoomIn, ZoomOut, ExternalLink, FileText, ArrowLeft, Loader2 } from 'lucide-react'
+import { Plus, Trash2, Save, Download, ZoomIn, ZoomOut, ExternalLink, ArrowLeft, FileText, Info, CheckCircle2, Clock3 } from 'lucide-react'
 import { invoiceApi, errMsg } from '../services/invoiceApi'
-import { Spinner, ErrorState, StatusBadge, ConfidenceBadge, Warning, ConfirmDialog } from '../components/common'
-import { download, toCsv, toJson } from '../utils'
+import { Spinner, ErrorState, StatusBadge, ConfidenceBadge, Warning, ConfirmDialog, PageHeader } from '../components/common'
+import { download, toCsv, toJson, money } from '../utils'
 import { config } from '../config'
 
-const setPath=(o,p,v)=>{const c=structuredClone(o);let t=c;const k=p.split('.');k.slice(0,-1).forEach(x=>t=t[x]);t[k.at(-1)]=v;return c}
-const num=v=>v===''?null:Number(v)
-const lineFields=config.mode==='live'?[['quantity','Qty'],['unitPrice','Unit price'],['taxAmount','Tax amount'],['total','Total']]:[['quantity','Qty'],['unitPrice','Unit price'],['taxRate','Tax %'],['total','Total']]
+const setPath = (o, p, v) => { const c = structuredClone(o); let target = c; const keys = p.split('.'); keys.slice(0, -1).forEach(k => { target[k] = target[k] ?? {}; target = target[k] }); target[keys.at(-1)] = v; return c }
+const num = v => v === '' ? null : Number(v)
 
-function Preview({id,url}){
-  const [zoom,setZoom]=useState(1),[failed,setFailed]=useState(false)
-  const file=useMemo(()=>invoiceApi.getFile(id),[id])
-  const [obj,setObj]=useState(null)
-  useEffect(()=>{if(!file){setObj(null);return}const u=URL.createObjectURL(file);setObj({u,type:file.type});return()=>URL.revokeObjectURL(u)},[file])  // revoke on unmount
-  const src=obj?.u||url, isPdf=obj?obj.type==='application/pdf':/\.pdf(\?|$)/i.test(url||'')
-  if(!src)return null
-  return <section className="panel">
-    <div className="panel-heading"><div><h2 className="panel-title">Source document</h2><p className="panel-note">Original file preview</p></div><div className="flex gap-1">
-      <button className="icon-button" aria-label="Zoom out" title="Zoom out" disabled={zoom<=.5||isPdf} onClick={()=>setZoom(z=>z-.25)}><ZoomOut size={15}/></button>
-      <button className="icon-button" aria-label="Zoom in" title="Zoom in" disabled={zoom>=3||isPdf} onClick={()=>setZoom(z=>z+.25)}><ZoomIn size={15}/></button>
-      {src&&<a className="icon-button" href={src} target="_blank" rel="noreferrer" aria-label="Open original document" title="Open original document"><ExternalLink size={15}/></a>}</div></div>
-    <div className="review-preview grid h-[60vh] max-h-[680px] place-items-center overflow-auto">
-      {!src||failed?<div className="max-w-xs px-6 text-center"><span className="empty-icon mx-auto"><ExternalLink size={18}/></span><p className="text-xs font-semibold text-slate-700">{failed?'Preview unavailable':'No document preview'}</p><p className="mt-1 text-[10px] leading-5 text-slate-500">{failed?'The document could not be rendered.':'The current backend does not provide an endpoint to retrieve the uploaded file.'}</p></div>
-      :isPdf?<iframe title="Invoice PDF" src={src} className="w-full h-full" onError={()=>setFailed(true)}/>
-      :<img alt="Uploaded invoice" src={src} style={{width:`${zoom*100}%`,maxWidth:'none'}} onError={()=>setFailed(true)}/>}
-    </div></section>
+function ReviewField({ form, edit, label, path, type = 'text', conf, placeholder }) {
+  const value = path.split('.').reduce((o, k) => o?.[k], form)
+  return <label className="block min-w-0"><span className="field-label flex items-center justify-between gap-2">{label}{conf && <ConfidenceBadge value={form.confidence?.[conf]}/>}</span><input className="inp" type={type} step={type === 'number' ? '0.01' : undefined} value={value ?? ''} placeholder={placeholder || ''} onChange={e => edit(path, type === 'number' ? num(e.target.value) : e.target.value || null)}/></label>
+}
+function ReviewSection({ title, children }) { return <fieldset className="panel review-section"><legend>{title}</legend><div className="section-grid">{children}</div></fieldset> }
+
+function Preview({ id, url }) {
+  const [zoom, setZoom] = useState(1), [failed, setFailed] = useState(false)
+  const file = useMemo(() => invoiceApi.getFile?.(id), [id])
+  const [obj, setObj] = useState(null)
+  useEffect(() => { setFailed(false); if (!file) { setObj(null); return } const u = URL.createObjectURL(file); setObj({ u, type: file.type }); return () => URL.revokeObjectURL(u) }, [file])
+  const src = obj?.u || url, isPdf = obj ? obj.type === 'application/pdf' : /\.pdf(\?|$)/i.test(url || '')
+  return <section className="panel"><div className="panel-title-row"><div><h2 className="panel-title">Original document</h2><p className="panel-subtitle">Compare the source with the extracted values.</p></div><div className="flex gap-1"><button className="icon-button" aria-label="Zoom out" title="Zoom out" disabled={zoom <= .5 || isPdf} onClick={() => setZoom(z => z - .25)}><ZoomOut size={15}/></button><button className="icon-button" aria-label="Zoom in" title="Zoom in" disabled={zoom >= 3 || isPdf} onClick={() => setZoom(z => z + .25)}><ZoomIn size={15}/></button>{src && <a className="icon-button" href={src} target="_blank" rel="noreferrer" aria-label="Open original document" title="Open original document"><ExternalLink size={15}/></a>}</div></div>
+    <div className="preview-frame">{!src || failed ? <div className="empty-state self-center"><FileText size={32} className="mx-auto"/><h3>{failed ? 'Preview unavailable' : 'No original file attached'}</h3><p>{failed ? 'This file could not be rendered in the browser.' : 'Demo records do not include a source document. A live record needs an originalFileUrl from the backend.'}</p></div> : isPdf ? <iframe title="Invoice PDF preview" src={src} className="w-full h-full border-0" onError={() => setFailed(true)}/> : <img alt="Uploaded invoice" src={src} style={{ width: `${zoom * 100}%`, maxWidth: 'none', height: 'auto' }} onError={() => setFailed(true)}/>}</div>
+    <div className="flex items-center gap-2 mt-3 tiny-label"><Info size={13}/>{isPdf ? 'PDF preview uses the browser viewer.' : `Image zoom · ${Math.round(zoom * 100)}%`}</div>
+  </section>
 }
 
-export default function Review(){
-  const {id}=useParams()
-  const [saved,setSaved]=useState(null),[form,setForm]=useState(null),[error,setError]=useState(null),[busy,setBusy]=useState(false),[activeAction,setActiveAction]=useState(null),[confirm,setConfirm]=useState(false)
-  const saving=useRef(false)
-  useEffect(()=>{let live=true;setSaved(null);setError(null)
-    invoiceApi.get(id).then(i=>{if(live){setSaved(i);setForm(structuredClone(i))}}).catch(e=>live&&setError(errMsg(e)));return()=>{live=false}},[id])
-  const dirty=saved&&form&&JSON.stringify(saved)!==JSON.stringify(form)
-  useEffect(()=>{if(!dirty)return;const h=e=>{e.preventDefault();e.returnValue=''};window.addEventListener('beforeunload',h);return()=>window.removeEventListener('beforeunload',h)},[dirty])
-  if(error)return <ErrorState message={error}/>
-  if(!form)return <Spinner/>
-  const warningGroups=[
-    {key:'error',title:'Action required',items:form.validationWarnings.filter(w=>w.severity==='error')},
-    {key:'warning',title:'Review notes',items:form.validationWarnings.filter(w=>!w.severity||w.severity==='warning')},
-    {key:'info',title:'Information',items:form.validationWarnings.filter(w=>w.severity==='info')},
-  ].filter(group=>group.items.length)
+export default function Review() {
+  const { id } = useParams()
+  const [saved, setSaved] = useState(null), [form, setForm] = useState(null), [error, setError] = useState(null), [busy, setBusy] = useState(false), [confirm, setConfirm] = useState(false)
+  const saving = useRef(false)
+  useEffect(() => { let active = true; setSaved(null); setForm(null); setError(null); invoiceApi.get(id).then(i => { if (active) { setSaved(i); setForm(structuredClone(i)) } }).catch(e => active && setError(errMsg(e))); return () => { active = false } }, [id])
+  const dirty = saved && form && JSON.stringify(saved) !== JSON.stringify(form)
+  useEffect(() => { if (!dirty) return; const handler = e => { e.preventDefault(); e.returnValue = '' }; window.addEventListener('beforeunload', handler); return () => window.removeEventListener('beforeunload', handler) }, [dirty])
+  if (error) return <ErrorState message={error}/>
+  if (!form) return <Spinner label="Opening invoice review…"/>
 
-  const edit=(p,v)=>setForm(f=>setPath(f,p,v))
-  const editLine=(i,k,v)=>setForm(f=>({...f,lineItems:f.lineItems.map((l,x)=>x===i?{...l,[k]:v}:l)}))
-  const run=async(fn,okMsg,action)=>{if(saving.current)return;saving.current=true;setBusy(true);setActiveAction(action)
-    try{const r=await fn();setSaved(r);setForm(structuredClone(r));toast.success(okMsg)}
-    catch(e){toast.error(errMsg(e)+' Your edits were kept.')}finally{saving.current=false;setBusy(false);setActiveAction(null)}}
-  const payload=()=>{const{id:_i,...rest}=form;return rest}
-  const save=()=>run(()=>invoiceApi.save(id,payload()),'Corrections saved.','save')
-  const review=s=>run(async()=>{if(dirty)await invoiceApi.save(id,payload());return invoiceApi.setReview(id,s)},'Status updated',`review:${s}`)
-
-  const F=({label,path,type='text',conf})=>{const v=path.split('.').reduce((o,k)=>o?.[k],form),missing=v==null||v==='',confidence=conf?form.confidence?.[conf]:null
-    return <label className={`review-field ${missing?'review-field-missing':''}`}><span className="review-field-label">{label}{confidence!=null?<ConfidenceBadge value={confidence}/>:missing&&<em>Not provided</em>}</span>
-      <input className={`inp ${missing?'input-missing':''}`} type={type} step={type==='number'?'0.01':undefined} placeholder={type==='text'?`Enter ${label.toLowerCase()}`:undefined} value={v??''} onChange={e=>edit(path,type==='number'?num(e.target.value):e.target.value||null)}/></label>}
-  const Sec=({t,children})=><fieldset className="card mb-3"><legend className="font-medium px-1">{t}</legend><div className="grid sm:grid-cols-2 gap-3">{children}</div></fieldset>
-  const doExport=(k)=>{try{k==='json'?download(`${form.invoiceNumber||form.id}.json`,toJson(form),'application/json'):download(`${form.invoiceNumber||form.id}.csv`,toCsv(form),'text/csv;charset=utf-8');toast.success('Export generated.')}catch{toast.error('Export failed.')}}
-  const hasPreview=Boolean(invoiceApi.getFile(id)||form.originalFileUrl)
-
+  const edit = (path, value) => setForm(f => setPath(f, path, value))
+  const editLine = (index, key, value) => setForm(f => ({ ...f, lineItems: f.lineItems.map((line, i) => i === index ? { ...line, [key]: value } : line) }))
+  const run = async (fn, message) => { if (saving.current) return; saving.current = true; setBusy(true); try { const result = await fn(); setSaved(result); setForm(structuredClone(result)); toast.success(message) } catch (e) { toast.error(`${errMsg(e)} Your edits were kept.`) } finally { saving.current = false; setBusy(false) } }
+  const payload = () => { const { id: _id, ...rest } = form; return rest }
+  const save = () => run(() => invoiceApi.save(id, payload()), 'Corrections saved.')
+  const review = status => run(async () => { if (dirty) await invoiceApi.save(id, payload()); return invoiceApi.setReview(id, status) }, 'Review status updated.')
+  const doExport = kind => { try { kind === 'json' ? download(`${form.invoiceNumber || form.id}.json`, toJson(form), 'application/json') : download(`${form.invoiceNumber || form.id}.csv`, toCsv(form), 'text/csv;charset=utf-8'); toast.success('Export generated.') } catch { toast.error('Export could not be generated.') } }
+  const warningCount = form.validationWarnings?.length || 0
   return <>
-    <section className="review-identity">
-      <div className="review-identity-main"><Link className="review-back" to="/invoices"><ArrowLeft size={14}/>Invoices</Link><div className="review-identity-title"><span className="review-file-icon"><FileText size={20}/></span><div className="min-w-0"><p className="review-eyebrow">INVOICE REVIEW <span>·</span> RECORD {form.id}</p><h1>{form.invoiceNumber||`Invoice #${form.id}`}</h1><p className="review-filename" title={form.original_filename||''}>{form.vendor.name||'Vendor not identified'}{form.original_filename?` · ${form.original_filename}`:''}</p></div></div></div>
-      <div className="review-identity-tools"><div className="review-statuses"><div><span>Processing</span><StatusBadge value={form.processingStatus}/></div><div><span>Review</span><StatusBadge kind="review" value={saved.reviewStatus}/></div>{dirty&&<span className="review-dirty">Unsaved edits</span>}</div><div className="review-export"><button className="btn" onClick={()=>doExport('json')}><Download size={14}/>JSON</button><button className="btn" onClick={()=>doExport('csv')}><Download size={14}/>CSV</button></div></div>
-    </section>
-    <div className={`review-grid grid items-start gap-4 ${hasPreview?'with-preview':''}`}>
-      {hasPreview&&<div className="lg:sticky lg:top-16"><Preview id={id} url={form.originalFileUrl}/></div>}
-      <div>
-        {!hasPreview&&<div className="source-unavailable" role="status"><span><FileText size={16}/></span><div><b>Original document unavailable</b><p>The backend did not provide a document URL, so only extracted fields can be reviewed here.</p></div></div>}
-        {warningGroups.length>0&&<section className="panel warning-panel mb-3"><div className="panel-heading mb-3"><div><p className="review-section-kicker">PROCESSING FEEDBACK</p><h2 className="panel-title">Validation notes</h2><p className="panel-note">Returned by the processing service; review alongside the extracted fields.</p></div><span className="warning-total">{form.validationWarnings.length} {form.validationWarnings.length===1?'note':'notes'}</span></div><div className="warning-groups">{warningGroups.map(group=><section className={`warning-group warning-group-${group.key}`} key={group.key}><h3>{group.title}<span>{group.items.length}</span></h3><ul>{group.items.map((w,i)=><Warning key={`${group.key}-${i}`} w={w}/>)}</ul></section>)}</div></section>}
-        <Sec t="Invoice"><F label="Invoice number" path="invoiceNumber" conf="invoiceNumber"/><F label="Invoice date" path="invoiceDate" type="date" conf="invoiceDate"/><F label="Due date" path="dueDate" type="date" conf="dueDate"/><F label="Currency" path="currency" conf="currency"/>{config.mode==='mock'&&<F label="Payment terms" path="paymentTerms"/>}</Sec>
-        <Sec t="Vendor"><F label="Name" path="vendor.name" conf="vendor"/>{config.mode==='mock'&&<><F label="Tax ID" path="vendor.taxId"/><div className="sm:col-span-2"><F label="Address" path="vendor.address"/></div></>}</Sec>
-        {config.mode==='mock'&&<Sec t="Customer"><F label="Name" path="customer.name"/><F label="Tax ID" path="customer.taxId"/><div className="sm:col-span-2"><F label="Address" path="customer.address"/></div></Sec>}
-        <Sec t="Financial summary"><F label="Subtotal" path="subtotal" type="number" conf="subtotal"/><F label="Tax amount" path="taxAmount" type="number" conf="taxAmount"/><F label="Discount" path="discount" type="number"/><F label="Total amount" path="totalAmount" type="number" conf="totalAmount"/></Sec>
-        <section className="panel mb-3"><div className="panel-heading"><div><h2 className="panel-title">Line items</h2><p className="panel-note">Edit extracted item details before saving.</p></div><button className="btn" onClick={()=>setForm(f=>({...f,lineItems:[...f.lineItems,{id:'new-'+Date.now(),description:'',quantity:null,unitPrice:null,[config.mode==='live'?'taxAmount':'taxRate']:null,total:null}]}))}><Plus size={14}/>Add line</button></div>
-          {form.lineItems.length===0?<p className="rounded-md bg-slate-50 px-3 py-5 text-center text-xs text-slate-500">No line items were returned.</p>:<div className="table-wrap"><table className="invoice-table min-w-[560px]"><thead><tr><th>Description</th>{lineFields.map(([,label])=><th key={label}>{label}</th>)}<th/></tr></thead><tbody>
-            {form.lineItems.map((l,i)=><tr key={l.id}><td className="pr-1"><input aria-label="Description" className="inp" value={l.description} onChange={e=>editLine(i,'description',e.target.value)}/></td>
-              {lineFields.map(([key,label])=><td key={key} className="pr-1"><input aria-label={label} type="number" step="0.01" className="inp w-24" value={l[key]??''} onChange={e=>editLine(i,key,num(e.target.value))}/></td>)}
-                <td><button className="icon-button" aria-label="Remove line" title="Remove line" onClick={()=>setForm(f=>({...f,lineItems:f.lineItems.filter((_,x)=>x!==i)}))}><Trash2 size={14}/></button></td></tr>)}</tbody></table></div>}</section>
-                <div className="review-actions flex flex-wrap gap-2">
-              <button className="btn btn-p" disabled={!dirty||busy} onClick={save}>{activeAction==='save'?<Loader2 className="animate-spin" size={14}/>:<Save size={14}/ >}{activeAction==='save'?'Saving…':'Save corrections'}</button>
-              <button className="btn btn-review-success" disabled={busy} onClick={()=>review('reviewed')}>{activeAction==='review:reviewed'&&<Loader2 className="animate-spin" size={14}/>}Mark reviewed</button>
-              <button className="btn btn-review-warning" disabled={busy} onClick={()=>review('needs_review')}>{activeAction==='review:needs_review'&&<Loader2 className="animate-spin" size={14}/>}Keep in review</button>
-              <button className="btn btn-review-danger" disabled={busy} onClick={()=>setConfirm(true)}>Reject</button>
-          <button className="btn" disabled title="Reprocess endpoint not available yet">Reprocess</button>
-        </div>
-      </div>
-    </div>
-    <ConfirmDialog open={confirm} title="Reject this invoice?" text="It will be marked as Rejected. You can change the status later." onNo={()=>setConfirm(false)} onYes={()=>{setConfirm(false);review('rejected')}}/>
+    <PageHeader title={form.invoiceNumber || 'Invoice review'} subtitle="Verify the source document, correct uncertain fields, and confirm the review status." eyebrow="HUMAN-IN-THE-LOOP REVIEW">
+      <Link to="/invoices" className="btn"><ArrowLeft size={14}/>Back to register</Link><button className="btn" onClick={() => doExport('json')}><Download size={14}/>JSON</button><button className="btn" onClick={() => doExport('csv')}><Download size={14}/>CSV</button>
+    </PageHeader>
+    <div className="flex items-center gap-2 flex-wrap mb-4"><StatusBadge value={form.processingStatus}/><StatusBadge kind="review" value={saved.reviewStatus}/>{dirty && <span className="status-badge badge-amber"><Clock3 size={11}/>Unsaved changes</span>}{config.mode === 'mock' && <span className="status-badge badge-grey">Demo data · not AI output</span>}</div>
+    {config.mode === 'mock' && <div className="notice warning"><Info size={16} className="shrink-0 mt-0.5"/><span><b>Demo record.</b> These fields are sample data or manual input; no AI extraction was performed.</span></div>}
+    <div className="review-layout"><div className="review-sticky"><Preview id={id} url={form.originalFileUrl}/></div><div>
+      {warningCount > 0 && <section className="panel mb-3"><div className="panel-title-row"><div><h2 className="panel-title">Validation findings</h2><p className="panel-subtitle">{warningCount} item{warningCount === 1 ? '' : 's'} reported by the data service.</p></div><span className="status-badge badge-amber">Needs attention</span></div><ul className="warning-list">{form.validationWarnings.map((w, i) => <Warning key={`${w.field || 'warning'}-${i}`} w={w}/>)}</ul></section>}
+      <ReviewSection title="Invoice details"><ReviewField form={form} edit={edit} label="Invoice number" path="invoiceNumber" conf="invoiceNumber" placeholder="e.g. INV-1001"/><ReviewField form={form} edit={edit} label="Currency" path="currency" conf="currency" placeholder="INR"/><ReviewField form={form} edit={edit} label="Invoice date" path="invoiceDate" type="date" conf="invoiceDate"/><ReviewField form={form} edit={edit} label="Due date" path="dueDate" type="date" conf="dueDate"/><ReviewField form={form} edit={edit} label="Payment terms" path="paymentTerms" placeholder="e.g. Net 30"/><ReviewField form={form} edit={edit} label="Processing status" path="processingStatus"/></ReviewSection>
+      <ReviewSection title="Vendor information"><ReviewField form={form} edit={edit} label="Vendor name" path="vendor.name" conf="vendor"/><ReviewField form={form} edit={edit} label="Vendor tax ID" path="vendor.taxId" placeholder="GSTIN / tax identifier"/><div className="span-two"><ReviewField form={form} edit={edit} label="Vendor address" path="vendor.address"/></div></ReviewSection>
+      <ReviewSection title="Customer information"><ReviewField form={form} edit={edit} label="Customer name" path="customer.name"/><ReviewField form={form} edit={edit} label="Customer tax ID" path="customer.taxId"/><div className="span-two"><ReviewField form={form} edit={edit} label="Customer address" path="customer.address"/></div></ReviewSection>
+      <ReviewSection title="Financial summary"><ReviewField form={form} edit={edit} label="Subtotal" path="subtotal" type="number" conf="subtotal"/><ReviewField form={form} edit={edit} label="Tax amount" path="taxAmount" type="number" conf="taxAmount"/><ReviewField form={form} edit={edit} label="Discount" path="discount" type="number"/><ReviewField form={form} edit={edit} label="Total amount" path="totalAmount" type="number" conf="totalAmount"/><ReviewField form={form} edit={edit} label="Amount paid" path="amountPaid" type="number"/><ReviewField form={form} edit={edit} label="Balance due" path="balanceDue" type="number"/></ReviewSection>
+      <section className="panel mb-3"><div className="panel-title-row"><div><h2 className="panel-title">Line items</h2><p className="panel-subtitle">Review quantities, unit prices, tax rates, and line totals.</p></div><button className="btn btn-soft" onClick={() => setForm(f => ({ ...f, lineItems: [...(f.lineItems || []), { id: `new-${Date.now()}`, description: '', quantity: null, unitPrice: null, taxRate: null, total: null }] }))}><Plus size={14}/>Add item</button></div>
+        {!form.lineItems?.length ? <div className="empty-state"><FileText size={25} className="mx-auto"/><h3>No line items extracted</h3><p>Add an item manually if this invoice includes one.</p></div> : <div className="table-wrap"><table className="invoice-table line-table"><thead><tr><th>Description</th><th>Qty</th><th>Unit price</th><th>Tax %</th><th>Line total</th><th/></tr></thead><tbody>{form.lineItems.map((line, index) => <tr key={line.id || index}><td><input aria-label="Line description" className="inp" value={line.description ?? ''} onChange={e => editLine(index, 'description', e.target.value)}/></td>{['quantity', 'unitPrice', 'taxRate', 'total'].map(key => <td key={key}><input aria-label={key} type="number" step="0.01" className="inp" style={{ minWidth: 80 }} value={line[key] ?? ''} onChange={e => editLine(index, key, num(e.target.value))}/></td>)}<td><button className="icon-button" aria-label="Remove line item" onClick={() => setForm(f => ({ ...f, lineItems: f.lineItems.filter((_, i) => i !== index) }))}><Trash2 size={15}/></button></td></tr>)}</tbody></table></div>}
+        <div className="flex justify-end mt-3 pt-3 border-t border-slate-100"><b className="text-sm">Invoice total: {money(form.totalAmount, form.currency)}</b></div>
+      </section>
+      <div className="review-actions"><button className="btn btn-p" disabled={!dirty || busy} onClick={save}><Save size={14}/>{busy ? 'Saving…' : 'Save corrections'}</button><button className="btn" disabled={busy} onClick={() => review('reviewed')}><CheckCircle2 size={14}/>Approve invoice</button><button className="btn" disabled={busy} onClick={() => review('needs_review')}>Needs review</button><button className="btn btn-danger" disabled={busy} onClick={() => setConfirm(true)}>Reject</button></div>
+    </div></div>
+    <ConfirmDialog open={confirm} title="Reject this invoice?" text="The invoice status will be changed to Rejected. You can update the status later." onNo={() => setConfirm(false)} onYes={() => { setConfirm(false); review('rejected') }}/>
   </>
 }
